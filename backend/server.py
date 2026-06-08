@@ -16,7 +16,7 @@ import numpy as np
 from ultralytics import YOLOv10
 
 # --- 配置 ---
-MODEL_PATH = Path(__file__).parent.parent / "runs" / "detect" / "train5" / "weights" / "best.pt"
+MODEL_PATH = Path(r"d:/yolov10/runs/detect/train5/weights/best.pt")
 CLASS_NAMES = {
     0: {"en": "recyclable waste", "zh": "可回收垃圾"},
     1: {"en": "hazardous waste", "zh": "有害垃圾"},
