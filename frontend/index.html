@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>YOLOv10 垃圾分类检测</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  :root {
+    --bg-primary: #0f172a;
+    --bg-secondary: #1e293b;
+    --bg-card: #0f172a;
+    --border: #334155;
+    --text-primary: #e2e8f0;
+    --text-secondary: #94a3b8;
+    --accent-blue: #38bdf8;
+    --accent-orange: #f59e0b;
+    --accent-green: #10b981;
+    --accent-gray: #94a3b8;
+    --btn-gradient: linear-gradient(135deg, #2563eb, #7c3aed);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    min-height: 100vh;
+  }
+  .btn-primary {
+    background: var(--btn-gradient);
+    color: white;
+    border: none;
+    padding: 12px 24px;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.2s;
+  }
+  .btn-primary:hover { opacity: 0.9; }
+  .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-secondary {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+    padding: 10px 20px;
+    border-radius: 8px;
+    cursor: pointer;
+  }
+  .btn-secondary:hover { background: #1a2940; }
+  .card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+  }
+  .tab {
+    padding: 8px 20px;
+    border-radius: 6px;
+    cursor: pointer;
+    color: var(--text-secondary);
+    font-weight: 500;
+    border: none;
+    background: transparent;
+    transition: all 0.2s;
+    font-size: 14px;
+  }
+  .tab.active {
+    background: var(--btn-gradient);
+    color: white;
+  }
+  .tab:not(.active):hover { color: var(--text-primary); }
+  .upload-zone {
+    border: 2px dashed var(--border);
+    border-radius: 12px;
+    padding: 40px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+  }
+  .upload-zone:hover, .upload-zone.dragover {
+    border-color: var(--accent-blue);
+    background: rgba(56, 189, 248, 0.05);
+  }
+  .tag {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .tag-recyclable { background: #0c4a6e; color: var(--accent-blue); }
+  .tag-hazardous { background: #451a03; color: var(--accent-orange); }
+  .tag-kitchen { background: #052e16; color: var(--accent-green); }
+  .tag-other { background: #1e293b; color: var(--accent-gray); }
+  .gallery-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 16px;
+  }
+  .progress-bar {
+    background: var(--border);
+    border-radius: 4px;
+    height: 6px;
+    overflow: hidden;
+  }
+  .progress-fill {
+    background: var(--btn-gradient);
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.3s ease;
+  }
+  .detection-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: var(--bg-secondary);
+    border-radius: 8px;
+    padding: 10px 12px;
+    margin-bottom: 6px;
+  }
+  .dot { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+  .dot-recyclable { background: var(--accent-blue); }
+  .dot-hazardous { background: var(--accent-orange); }
+  .dot-kitchen { background: var(--accent-green); }
+  .dot-other { background: var(--accent-gray); }
+</style>
+</head>
+<body>
+  <!-- Header -->
+  <header style="background:var(--bg-secondary);border-bottom:1px solid var(--border);padding:16px 24px;display:flex;align-items:center;gap:12px;">
+    <span style="font-size:24px;">🤖</span>
+    <h1 style="font-size:18px;font-weight:700;">YOLOv10 垃圾分类检测</h1>
+    <span style="margin-left:auto;font-size:12px;color:var(--text-secondary);">
+      模型: best.pt | 4 类别 | <span id="status-indicator" style="color:#f59e0b;">● 检测中...</span>
+    </span>
+  </header>
+
+  <!-- Main -->
+  <div style="max-width:1200px;margin:0 auto;padding:24px;">
+    <!-- Tabs -->
+    <div style="display:flex;gap:8px;margin-bottom:24px;">
+      <button class="tab active" onclick="switchTab('single')" id="tab-single">📷 单张检测</button>
+      <button class="tab" onclick="switchTab('batch')" id="tab-batch">📁 批量检测</button>
+    </div>
+
+    <!-- ===== 单张检测 ===== -->
+    <div id="panel-single">
+      <div style="display:flex;gap:20px;flex-wrap:wrap;">
+        <!-- Left -->
+        <div style="flex:1;min-width:400px;display:flex;flex-direction:column;gap:16px;">
+          <div class="card upload-zone" id="single-upload-zone">
+            <div style="font-size:48px;margin-bottom:12px;" id="single-upload-icon">📤</div>
+            <div style="font-size:16px;font-weight:600;margin-bottom:6px;">拖拽图片到此处 或 点击上传</div>
+            <div style="font-size:12px;color:var(--text-secondary);">支持 JPG / PNG / BMP，≤ 10MB</div>
+            <input type="file" id="single-file-input" accept="image/*" hidden onchange="handleSingleFile(this)">
+          </div>
+          <div class="card" id="single-result" style="display:none;align-items:center;justify-content:center;">
+            <img id="single-result-img" style="max-width:100%;border-radius:8px;" />
+          </div>
+          <div id="single-placeholder" class="card" style="min-height:300px;display:flex;align-items:center;justify-content:center;color:var(--text-secondary);">
+            <div style="text-align:center;">🖼️<br>检测结果将在此处显示</div>
+          </div>
+        </div>
+
+        <!-- Right -->
+        <div style="width:260px;display:flex;flex-direction:column;gap:16px;">
+          <div class="card">
+            <div style="font-size:14px;font-weight:600;margin-bottom:14px;">⚙️ 检测设置</div>
+            <div style="margin-bottom:12px;">
+              <label style="font-size:11px;color:var(--text-secondary);display:block;margin-bottom:4px;">置信度阈值</label>
+              <input type="range" id="single-conf" min="0.05" max="1" step="0.05" value="0.25" style="width:100%;accent-color:var(--accent-blue);"
+                oninput="document.getElementById('single-conf-val').textContent=this.value">
+              <span id="single-conf-val" style="font-size:13px;color:var(--accent-blue);">0.25</span>
+            </div>
+            <div style="margin-bottom:12px;">
+              <label style="font-size:11px;color:var(--text-secondary);display:block;margin-bottom:4px;">图片尺寸</label>
+              <select id="single-imgsz" style="width:100%;background:var(--bg-secondary);border:1px solid var(--border);color:var(--text-primary);padding:8px;border-radius:6px;">
+                <option value="320">320</option>
+                <option value="640" selected>640</option>
+                <option value="1280">1280</option>
+              </select>
+            </div>
+            <button class="btn-primary" style="width:100%;" onclick="runDetect()" id="btn-detect" disabled>🔍 开始检测</button>
+          </div>
+          <div class="card" id="single-detections-card" style="display:none;">
+            <div style="font-size:14px;font-weight:600;margin-bottom:12px;">📊 检测结果</div>
+            <div id="single-detections-list"></div>
+            <div style="margin-top:10px;padding:8px;background:#0c4a6e;border-radius:6px;text-align:center;">
+              <div style="font-size:10px;color:#7dd3fc;">检测耗时</div>
+              <div style="font-size:18px;color:var(--accent-blue);font-weight:700;" id="single-time">-</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== 批量检测 ===== -->
+    <div id="panel-batch" style="display:none;">
+      <div class="card upload-zone" id="batch-upload-zone" style="margin-bottom:20px;">
+        <div style="font-size:40px;margin-bottom:8px;">📁</div>
+        <div style="font-size:15px;font-weight:600;margin-bottom:4px;">拖拽多张图片 或 选择文件夹</div>
+        <div style="font-size:12px;color:var(--text-secondary);">
+          已选择 <span id="batch-file-count" style="color:#fbbf24;font-weight:700;">0</span> 张图片
+        </div>
+        <input type="file" id="batch-file-input" accept="image/*" multiple hidden onchange="handleBatchFiles(this)">
+        <button class="btn-primary" style="margin-top:12px;width:100%;" id="btn-batch-detect" onclick="runBatchDetect()">🔍 开始批量检测</button>
+      </div>
+      <div id="batch-progress" style="display:none;margin-bottom:16px;">
+        <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-secondary);margin-bottom:4px;">
+          <span>检测进度</span><span id="batch-progress-text" style="color:var(--accent-blue);">0/0</span>
+        </div>
+        <div class="progress-bar"><div class="progress-fill" id="batch-progress-fill" style="width:0%;"></div></div>
+      </div>
+      <div class="card" id="batch-summary" style="display:none;margin-bottom:16px;">
+        <div style="display:flex;gap:16px;flex-wrap:wrap;justify-content:center;font-size:14px;">
+          <span>🔵 可回收: <strong id="sum-recyclable">0</strong></span>
+          <span>🟠 有害: <strong id="sum-hazardous">0</strong></span>
+          <span>🟢 厨余: <strong id="sum-kitchen">0</strong></span>
+          <span>⚪ 其他: <strong id="sum-other">0</strong></span>
+        </div>
+      </div>
+      <div class="gallery-grid" id="batch-gallery"></div>
+      <div id="batch-actions" style="display:none;gap:12px;justify-content:center;margin-top:20px;">
+        <button class="btn-primary" onclick="downloadBatchZip()">📥 下载全部结果</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+const API_BASE = 'http://localhost:8000';
+let selectedFile = null;
+let batchFiles = [];
+let batchResults = [];
+
+// --- 启动时检查后端 ---
+fetch(API_BASE + '/api/health')
+  .then(r => r.json())
+  .then(d => {
+    document.getElementById('status-indicator').innerHTML =
+      d.status === 'ok' ? '🟢 模型就绪' : '🔴 ' + (d.error || '连接失败');
+  })
+  .catch(() => {
+    document.getElementById('status-indicator').innerHTML = '🔴 后端未连接';
+  });
+
+// --- Tab 切换 ---
+function switchTab(tab) {
+  document.getElementById('panel-single').style.display = tab === 'single' ? '' : 'none';
+  document.getElementById('panel-batch').style.display = tab === 'batch' ? '' : 'none';
+  document.getElementById('tab-single').classList.toggle('active', tab === 'single');
+  document.getElementById('tab-batch').classList.toggle('active', tab === 'batch');
+}
+
+// --- 上传：拖拽支持 ---
+['single-upload-zone', 'batch-upload-zone'].forEach(id => {
+  const zone = document.getElementById(id);
+  if (!zone) return;
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('dragover'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
+  zone.addEventListener('drop', e => {
+    e.preventDefault();
+    zone.classList.remove('dragover');
+    const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
+    if (!files.length) return;
+    if (id === 'single-upload-zone') selectSingleFile(files[0]);
+    else setBatchFiles(files);
+  });
+});
+
+// 点击上传区触发文件选择
+document.getElementById('single-upload-zone').addEventListener('click', () => {
+  document.getElementById('single-file-input').click();
+});
+document.getElementById('batch-upload-zone').addEventListener('click', (e) => {
+  if (e.target.tagName !== 'BUTTON') document.getElementById('batch-file-input').click();
+});
+
+function handleSingleFile(input) {
+  if (input.files.length > 0) selectSingleFile(input.files[0]);
+}
+
+function selectSingleFile(file) {
+  selectedFile = file;
+  document.getElementById('single-upload-icon').textContent = '✅';
+  document.getElementById('btn-detect').disabled = false;
+}
+
+function handleBatchFiles(input) {
+  if (input.files.length > 0) setBatchFiles(Array.from(input.files));
+}
+
+function setBatchFiles(files) {
+  batchFiles = files;
+  document.getElementById('batch-file-count').textContent = files.length;
+}
+
+// --- 单张检测 ---
+async function runDetect() {
+  if (!selectedFile) return;
+  const btn = document.getElementById('btn-detect');
+  btn.disabled = true;
+  btn.textContent = '⏳ 检测中...';
+
+  const form = new FormData();
+  form.append('image', selectedFile);
+  form.append('conf', document.getElementById('single-conf').value);
+  form.append('imgsz', document.getElementById('single-imgsz').value);
+
+  try {
+    const res = await fetch(API_BASE + '/api/detect', { method: 'POST', body: form });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error);
+
+    document.getElementById('single-placeholder').style.display = 'none';
+    const resultDiv = document.getElementById('single-result');
+    resultDiv.style.display = 'flex';
+    document.getElementById('single-result-img').src = data.image_base64;
+
+    document.getElementById('single-detections-card').style.display = '';
+    const list = document.getElementById('single-detections-list');
+    const tagCls = ['tag-recyclable', 'tag-hazardous', 'tag-kitchen', 'tag-other'];
+    const dotCls = ['dot-recyclable', 'dot-hazardous', 'dot-kitchen', 'dot-other'];
+    list.innerHTML = data.detections.length === 0
+      ? '<div style="color:var(--text-secondary);font-size:12px;text-align:center;padding:16px;">未检测到目标</div>'
+      : data.detections.map(d => `
+        <div class="detection-item">
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span class="dot ${dotCls[d.class_id] || 'dot-other'}"></span>
+            <span style="font-size:12px;">${d.class_name_zh}</span>
+          </div>
+          <span class="tag ${tagCls[d.class_id] || 'tag-other'}">${(d.confidence*100).toFixed(0)}%</span>
+        </div>
+      `).join('');
+
+    document.getElementById('single-time').textContent = (data.inference_time_ms / 1000).toFixed(2) + 's';
+  } catch (e) {
+    alert('检测失败: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🔍 开始检测';
+  }
+}
+
+// --- 批量检测 ---
+async function runBatchDetect() {
+  if (batchFiles.length === 0) return;
+  const btn = document.getElementById('btn-batch-detect');
+  btn.disabled = true;
+  btn.textContent = '⏳ 检测中...';
+
+  document.getElementById('batch-progress').style.display = '';
+  document.getElementById('batch-gallery').innerHTML = '';
+  batchResults = [];
+
+  const conf = document.getElementById('single-conf').value;
+  const imgsz = document.getElementById('single-imgsz').value;
+  const total = batchFiles.length;
+  const summary = { 'recyclable waste': 0, 'hazardous waste': 0, 'kitchen waste': 0, 'other waste': 0 };
+
+  for (let i = 0; i < total; i++) {
+    const form = new FormData();
+    form.append('image', batchFiles[i]);
+    form.append('conf', conf);
+    form.append('imgsz', imgsz);
+
+    try {
+      const res = await fetch(API_BASE + '/api/detect', { method: 'POST', body: form });
+      const data = await res.json();
+      if (data.success) {
+        batchResults.push({ filename: batchFiles[i].name, ...data });
+        data.detections.forEach(d => { summary[d.class_name]++; });
+        appendGalleryCard(data, batchFiles[i].name);
+      }
+    } catch (e) {
+      console.error('检测失败:', batchFiles[i].name, e);
+    }
+
+    const pct = ((i + 1) / total) * 100;
+    document.getElementById('batch-progress-fill').style.width = pct + '%';
+    document.getElementById('batch-progress-text').textContent = `${i + 1}/${total}`;
+  }
+
+  document.getElementById('batch-summary').style.display = '';
+  document.getElementById('sum-recyclable').textContent = summary['recyclable waste'];
+  document.getElementById('sum-hazardous').textContent = summary['hazardous waste'];
+  document.getElementById('sum-kitchen').textContent = summary['kitchen waste'];
+  document.getElementById('sum-other').textContent = summary['other waste'];
+
+  document.getElementById('batch-actions').style.display = 'flex';
+
+  btn.disabled = false;
+  btn.textContent = '🔍 开始批量检测';
+}
+
+function appendGalleryCard(data, filename) {
+  const tagCls = ['tag-recyclable', 'tag-hazardous', 'tag-kitchen', 'tag-other'];
+  const tags = data.detections.slice(0, 3).map(d =>
+    `<span class="tag ${tagCls[d.class_id] || 'tag-other'}">${d.class_name_zh} ${(d.confidence*100).toFixed(0)}%</span>`
+  ).join('') || '<span style="font-size:10px;color:var(--text-secondary);">无检测目标</span>';
+
+  const card = document.createElement('div');
+  card.className = 'card';
+  card.style.overflow = 'hidden';
+  card.innerHTML = `
+    <img src="${data.image_base64}" style="width:100%;height:180px;object-fit:cover;border-radius:4px;" />
+    <div style="padding:10px 4px 4px;">
+      <div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px;">${filename}</div>
+      <div style="display:flex;gap:4px;flex-wrap:wrap;">${tags}</div>
+    </div>
+  `;
+  document.getElementById('batch-gallery').appendChild(card);
+}
+
+function downloadBatchZip() {
+  if (batchResults.length === 0) return;
+  batchResults.forEach((r, i) => {
+    setTimeout(() => {
+      const a = document.createElement('a');
+      a.href = r.image_base64;
+      a.download = 'annotated_' + r.filename;
+      a.click();
+    }, i * 200);
+  });
+}
+</script>
+</body>
+</html>
