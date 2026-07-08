@@ -1,0 +1,12 @@
+# C:/Users/86173/yolov10/ultralytics/cfg/datasets/VOC-bm.yaml
+path: D:/yolov10/datasets/VOCdevkit  # 数据集根目录
+train: images/train  # 训练集路径（相对于path）
+val: images/val      # 验证集路径（相对于path）
+
+names:
+  0: recyclable waste
+  1: hazardous waste
+  2: kitchen waste
+  3: other waste
+
+  augment: True

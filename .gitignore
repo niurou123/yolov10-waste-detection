@@ -143,10 +143,12 @@ runs/
 wandb/
 tests/
 .DS_Store
+# personal and generated files
 235703240*
 submission.zip
 yolov10/
 ultralytics/testfiles/
+labelImg-master/
 
 # Neural Network weights -----------------------------------------------------------------------------------------------
 weights/
