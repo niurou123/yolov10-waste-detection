@@ -143,6 +143,10 @@ runs/
 wandb/
 tests/
 .DS_Store
+235703240*
+submission.zip
+yolov10/
+ultralytics/testfiles/
 
 # Neural Network weights -----------------------------------------------------------------------------------------------
 weights/
